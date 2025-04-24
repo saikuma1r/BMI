@@ -44,16 +44,18 @@ def convert_pdf_to_audio():
     zip_filename = os.path.join(AUDIO_FOLDER, f"{uuid.uuid4()}.zip")
     with zipfile.ZipFile(zip_filename, 'w') as zipf:
         for i, page in enumerate(doc):
-            text = page.get_text()
-            if not text.strip():
+            text = page.get_text().strip()
+            if not text:
                 continue
             audio = gTTS(text)
-            page_audio = os.path.join(AUDIO_FOLDER, f"page_{i + 1}.mp3")
-            audio.save(page_audio)
-            zipf.write(page_audio, os.path.basename(page_audio))
-            os.remove(page_audio)
-
-    return send_file(zip_filename, as_attachment=True)
-
+        
+            # Make a unique filename for each page
+            audio_filename = f"page_{i + 1}_{uuid.uuid4().hex[:6]}.mp3"
+            page_audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
+        
+            audio.save(page_audio_path)
+            zipf.write(page_audio_path, audio_filename)  # Write to zip using filename only
+            os.remove(page_audio_path)  # Clean up individual file after adding to zip
+            
 if __name__ == '__main__':
     app.run(debug=True)
