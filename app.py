@@ -1,9 +1,9 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, request, send_file
 from gtts import gTTS
 import fitz  # PyMuPDF
-from pydub import AudioSegment
 import os
 import uuid
+import zipfile
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -32,36 +32,28 @@ def convert_pdf_to_audio():
 
     doc = fitz.open(pdf_path)
     num_pages = len(doc)
-    audio_files = []
 
     if num_pages <= 10:
-        text = ""
-        for page in doc:
-            text += page.get_text()
+        text = "".join([page.get_text() for page in doc])
         audio = gTTS(text)
-        audio_filename = f"{uuid.uuid4()}.mp3"
-        audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
+        audio_path = os.path.join(AUDIO_FOLDER, f"{uuid.uuid4()}.mp3")
         audio.save(audio_path)
         return send_file(audio_path, as_attachment=True)
 
-    # For larger PDFs, convert each page and combine
-    combined_audio = AudioSegment.empty()
-    for page in doc:
-        page_text = page.get_text()
-        if not page_text.strip():
-            continue
-        tts = gTTS(page_text)
-        temp_audio_path = os.path.join(AUDIO_FOLDER, f"{uuid.uuid4()}.mp3")
-        tts.save(temp_audio_path)
-        segment = AudioSegment.from_mp3(temp_audio_path)
-        combined_audio += segment
-        os.remove(temp_audio_path)
+    # For large PDFs: one audio per page, zipped
+    zip_filename = os.path.join(AUDIO_FOLDER, f"{uuid.uuid4()}.zip")
+    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+        for i, page in enumerate(doc):
+            text = page.get_text()
+            if not text.strip():
+                continue
+            audio = gTTS(text)
+            page_audio = os.path.join(AUDIO_FOLDER, f"page_{i + 1}.mp3")
+            audio.save(page_audio)
+            zipf.write(page_audio, os.path.basename(page_audio))
+            os.remove(page_audio)
 
-    final_audio_filename = f"{uuid.uuid4()}_combined.mp3"
-    final_audio_path = os.path.join(AUDIO_FOLDER, final_audio_filename)
-    combined_audio.export(final_audio_path, format="mp3")
-
-    return send_file(final_audio_path, as_attachment=True)
+    return send_file(zip_filename, as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
